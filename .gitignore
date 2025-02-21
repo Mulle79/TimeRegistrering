@@ -42,6 +42,20 @@ captures/
 # Google Services (e.g. APIs or Firebase)
 google-services.json
 
+# Secrets and credentials
+app/src/main/res/values/secrets.xml
+keystore.properties
+*.jks
+*.keystore
+client_secret*.json
+
+# Large binary files
+*.exe
+*.zip
+*.jar
+lib/
+libs/
+
 # Version control
 vcs.xml
 

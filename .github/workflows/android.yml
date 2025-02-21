@@ -5,6 +5,8 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  release:
+    types: [created]
 
 jobs:
   build:
@@ -19,38 +21,52 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-      
-    - name: Build with Gradle
-      run: ./gradlew build
+    - name: Setup secrets
+      env:
+        GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+        GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+      run: |
+        echo '<?xml version="1.0" encoding="utf-8"?>' > app/src/main/res/values/secrets.xml
+        echo '<resources>' >> app/src/main/res/values/secrets.xml
+        echo '    <string name="google_oauth_client_id">'$GOOGLE_OAUTH_CLIENT_ID'</string>' >> app/src/main/res/values/secrets.xml
+        echo '    <string name="google_oauth_client_secret">'$GOOGLE_OAUTH_CLIENT_SECRET'</string>' >> app/src/main/res/values/secrets.xml
+        echo '    <string name="maps_api_key">'$MAPS_API_KEY'</string>' >> app/src/main/res/values/secrets.xml
+        echo '</resources>' >> app/src/main/res/values/secrets.xml
 
-    - name: Run Tests
+    - name: Setup Gradle
+      uses: gradle/gradle-build-action@v2
+
+    - name: Run tests
       run: ./gradlew test
 
-    - name: Generate Test Report
+    - name: Generate test report
       run: ./gradlew jacocoTestReport
 
-    - name: Generate Documentation
+    - name: Generate documentation
       run: ./gradlew dokkaHtml
 
-    - name: Upload Test Results
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: test-results
-        path: app/build/reports/tests/
+    - name: Build debug APK
+      run: ./gradlew assembleDebug
 
-    - name: Upload Coverage Report
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: coverage-report
-        path: app/build/reports/jacoco/
+    - name: Build release APK
+      if: github.event_name == 'release'
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: |
+        echo "${{ secrets.KEYSTORE_FILE }}" > keystore.jks.base64
+        base64 -d keystore.jks.base64 > app/keystore/release.keystore
+        ./gradlew assembleRelease
 
-    - name: Upload Documentation
-      if: always()
-      uses: actions/upload-artifact@v3
+    - name: Upload APK
+      if: github.event_name == 'release'
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        name: documentation
-        path: app/build/dokka/
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: app/build/outputs/apk/release/app-release.apk
+        asset_name: app-release.apk
+        asset_content_type: application/vnd.android.package-archive
