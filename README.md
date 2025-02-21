@@ -693,3 +693,31 @@ Se [CONTRIBUTING.md](CONTRIBUTING.md) for detaljer om hvordan du kan bidrage til
 
 ## Changelog
 Se [CHANGELOG.md](CHANGELOG.md) for en liste over ændringer i hver version.
+
+## Sikkerhed og Konfiguration
+
+### Følsomme Data
+1. Kopier `secrets.xml.template` til `secrets.xml`
+2. Udfyld dine API nøgler i `secrets.xml`
+3. ALDRIG commit `secrets.xml` til git
+
+### GitHub Actions Secrets
+Følgende secrets skal konfigureres i GitHub repository:
+- `GOOGLE_OAUTH_CLIENT_ID`
+- `GOOGLE_OAUTH_CLIENT_SECRET`
+- `MAPS_API_KEY`
+- `KEYSTORE_PASSWORD`
+- `KEY_ALIAS`
+- `KEY_PASSWORD`
+- `KEYSTORE_FILE` (base64 encoded keystore fil)
+
+## Build og Test
+```bash
+# Kør tests og generer coverage rapport
+./gradlew runTests
+
+# Generer dokumentation
+./gradlew generateDocumentation
+
+# Byg release APK
+./gradlew assembleRelease

@@ -49,13 +49,6 @@ keystore.properties
 *.keystore
 client_secret*.json
 
-# Large binary files
-*.exe
-*.zip
-*.jar
-lib/
-libs/
-
 # Version control
 vcs.xml
 
