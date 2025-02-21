@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Inkluder kun sikre data i backup -->
+    <include domain="database" path="timeregistrering.db"/>
+    <include domain="sharedpref" path="com.example.timeregistrering_preferences.xml"/>
+    
+    <!-- Ekskluder følsomme data -->
+    <exclude domain="sharedpref" path="auth_tokens.xml"/>
+    <exclude domain="file" path="credentials/"/>
+    <exclude domain="file" path="cache/"/>
+</full-backup-content>

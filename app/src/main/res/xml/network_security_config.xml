@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+    <domain-config>
+        <domain includeSubdomains="true">api.timeregistrering.dk</domain>
+        <domain includeSubdomains="true">api-dev.timeregistrering.dk</domain>
+        <pin-set expiration="2026-02-14">
+            <!-- Tilføj certificate pinning her når produktionsservere er klar -->
+            <!-- <pin digest="SHA-256">base64 af certifikat her</pin> -->
+        </pin-set>
+    </domain-config>
+</network-security-config>

@@ -1,0 +1,22 @@
+Version 1.0.0 (Første release)
+
+Nye funktioner:
+• Nem timeregistrering med uge-visning
+• Automatisk registrering baseret på lokation
+• Excel eksport af timeregistreringer
+• Mørk tilstand support
+• Tablet optimeret layout
+• Automatisk backup/restore
+• Batterisparende lokationstjenester
+
+Sikkerhed:
+• Krypteret data backup
+• Sikker lagring af brugerdata
+• Fuld GDPR compliance
+
+Performance:
+• Optimeret batteriforbrug
+• Hurtig app opstart
+• Effektiv datahåndtering
+
+Bemærk: Denne app kræver tilladelse til lokation for at kunne fungere optimalt.

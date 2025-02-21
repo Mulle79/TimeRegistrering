@@ -1,0 +1,1 @@
+Professionel timeregistrering med automatisk lokationsbaseret registrering og Excel eksport.

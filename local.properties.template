@@ -1,0 +1,19 @@
+# Copy this file to local.properties and fill in your API keys
+sdk.dir=C:\\Users\\USERNAME\\AppData\\Local\\Android\\Sdk
+
+# Google Maps API Key
+MAPS_API_KEY=your_maps_api_key_here
+
+# Google OAuth Client ID
+OAUTH_CLIENT_ID=your_oauth_client_id_here
+
+# Google Calendar API Credentials
+GOOGLE_CLIENT_ID=your_client_id_here
+GOOGLE_CLIENT_SECRET=your_client_secret_here
+GOOGLE_PROJECT_ID=your_project_id_here
+
+# Release Keystore Information
+RELEASE_STORE_FILE=path/to/your/release.keystore
+RELEASE_STORE_PASSWORD=your_store_password
+RELEASE_KEY_ALIAS=your_key_alias
+RELEASE_KEY_PASSWORD=your_key_password

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Timeregistrering</string>
+    
+    <!-- Navigation labels -->
+    <string name="nav_ugeskema">Ugeskema</string>
+    <string name="nav_moeder">Møder</string>
+    <string name="nav_statistik">Statistik</string>
+    
+    <!-- Button labels -->
+    <string name="btn_gem">Gem</string>
+    <string name="btn_annuller">Annuller</string>
+    <string name="btn_slet">Slet</string>
+    <string name="btn_start">Start</string>
+    <string name="btn_slut">Slut</string>
+    <string name="btn_ok">OK</string>
+    <string name="btn_tilbage">Tilbage</string>
+    <string name="btn_forrige_uge">Forrige uge</string>
+    <string name="btn_naeste_uge">Næste uge</string>
+    
+    <!-- Labels -->
+    <string name="label_nu">Nu</string>
+    <string name="label_helligdag">Helligdag</string>
+    <string name="label_weekend">Weekend</string>
+    <string name="label_timer_ialt_uge">Timer i alt denne uge:</string>
+    <string name="label_timer_idag">Timer i dag: %.1f</string>
+    
+    <!-- Error messages -->
+    <string name="error_google_calendar">Kunne ikke synkronisere med Google Calendar</string>
+    <string name="error_permissions">Manglende tilladelser</string>
+    <string name="error_dialog_title">Fejl</string>
+    
+    <!-- Content descriptions -->
+    <string name="cd_gaa_tilbage">Gå tilbage</string>
+    <string name="cd_forrige_uge">Gå til forrige uge</string>
+    <string name="cd_naeste_uge">Gå til næste uge</string>
+    <string name="cd_total_timer">Total antal timer denne uge</string>
+    <string name="cd_vaelg_tid">Vælg tidspunkt</string>
+    
+    <!-- API settings -->
+    <string name="base_url" translatable="false">${BASE_URL}</string>
+</resources>

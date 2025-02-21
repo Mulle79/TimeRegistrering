@@ -1,0 +1,43 @@
+Timeregistrering - Din professionelle tidsstyring
+
+Simpel og effektiv timeregistrering designet til det moderne arbejdsliv. Med vores app kan du nemt holde styr på dine arbejdstimer, uanset om du er på kontoret eller på farten.
+
+HOVEDFUNKTIONER:
+
+📅 Smart Timeregistrering
+• Intuitiv uge-visning
+• Hurtig indtastning af arbejdstider
+• Automatisk registrering baseret på din lokation
+• Fleksibel redigering af tider
+
+📊 Professionel Rapportering
+• Excel eksport af timeregistreringer
+• Detaljeret oversigt over arbejdstimer
+• Nem deling af rapporter
+• Automatisk backup af dine data
+
+🔒 Sikkerhed i Fokus
+• Krypteret data backup
+• Sikker lagring af personlige oplysninger
+• GDPR compliant
+• Fuld kontrol over dine data
+
+📱 Moderne Design
+• Intuitivt brugerinterface
+• Mørk tilstand support
+• Tablet optimeret layout
+• Material Design 3
+
+⚡ Smart Teknologi
+• Batterisparende lokationstjenester
+• Offline support
+• Hurtig og responsiv
+• Automatiske opdateringer
+
+Perfekt til:
+• Freelancere
+• Konsulenter
+• Projektmedarbejdere
+• Alle der har behov for præcis tidsstyring
+
+Download nu og få styr på din tid!
