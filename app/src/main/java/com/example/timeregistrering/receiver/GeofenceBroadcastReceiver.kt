@@ -4,110 +4,123 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import com.google.android.gms.location.Geofence
-import com.google.android.gms.location.GeofenceStatusCodes
-import com.google.android.gms.location.GeofencingEvent
-import com.example.timeregistrering.repository.TimeRegistrationRepository
 import com.example.timeregistrering.location.LocationManager
-import com.example.timeregistrering.common.util.NotificationHelper
+import com.example.timeregistrering.data.repository.TimeRegistrationRepository
+import com.example.timeregistrering.data.repository.ProjectRepository
+import com.example.timeregistrering.util.NotificationHelper
+import com.google.android.gms.location.Geofence
+import com.google.android.gms.location.GeofencingEvent
+import com.google.android.gms.location.GeofenceStatusCodes
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class GeofenceBroadcastReceiver : BroadcastReceiver() {
     
     @Inject
-    lateinit var repository: TimeRegistrationRepository
-
+    lateinit var timeRegistrationRepository: TimeRegistrationRepository
+    
+    @Inject
+    lateinit var projectRepository: ProjectRepository
+    
     @Inject
     lateinit var locationManager: LocationManager
-
+    
     @Inject
     lateinit var notificationHelper: NotificationHelper
-
+    
     companion object {
-        private const val TAG = "GeofenceReceiver"
+        private const val TAG = "GeofenceBroadcastReceiver"
+        private const val DEFAULT_PROJECT_ID = "default_project"
     }
-
+    
     override fun onReceive(context: Context, intent: Intent) {
         val geofencingEvent = GeofencingEvent.fromIntent(intent)
+        
         if (geofencingEvent == null) {
-            Log.e(TAG, "Geofencing event is null")
+            Log.e(TAG, "Geofencing event er null")
             return
         }
-
+        
         if (geofencingEvent.hasError()) {
             val errorMessage = GeofenceStatusCodes.getStatusCodeString(geofencingEvent.errorCode)
-            Log.e(TAG, "Geofencing error: $errorMessage")
+            Log.e(TAG, "Geofencing fejl: $errorMessage")
             return
         }
-
-        when (geofencingEvent.geofenceTransition) {
-            Geofence.GEOFENCE_TRANSITION_ENTER -> handleArrival()
-            Geofence.GEOFENCE_TRANSITION_EXIT -> handleDeparture()
+        
+        // Få geofence transition type
+        val geofenceTransition = geofencingEvent.geofenceTransition
+        
+        // Kontroller om transitionen er en ankomst eller afgang
+        if (geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER) {
+            Log.d(TAG, "Ankomst til arbejdsplads registreret")
+            locationManager.updateWorkStatus(true)
+            handleArrival()
+        } else if (geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT) {
+            Log.d(TAG, "Afgang fra arbejdsplads registreret")
+            locationManager.updateWorkStatus(false)
+            handleDeparture()
         }
     }
-
+    
     private fun handleArrival() {
-        Log.d(TAG, "Entered work location")
-        
-        // Opdater lokationsstatus
-        locationManager.updateWorkStatus(true)
-        
-        // Start tidsregistrering
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val registration = repository.startTimeRegistration(
-                    projectId = "default",
-                    description = "Automatisk registrering (ankomst)"
+                // Hent standard projekt eller brug et default ID
+                val defaultProject = projectRepository.getDefaultProject()
+                val projectId = defaultProject?.id ?: DEFAULT_PROJECT_ID
+                
+                // Start tidsregistrering
+                val registration = timeRegistrationRepository.startTimeRegistration(
+                    projectId = projectId,
+                    description = "Automatisk registrering ved ankomst"
                 )
                 
-                // Send notifikation
-                val time = LocalDateTime.now().toLocalTime()
-                notificationHelper.showNotification(
+                // Vis notifikation
+                notificationHelper.showArrivalNotification(
                     title = "Tidsregistrering startet",
-                    message = "Du er ankommet til arbejdspladsen kl. $time"
+                    message = "Du er ankommet til arbejdspladsen. Tidsregistrering er startet automatisk."
                 )
                 
-                Log.d(TAG, "Successfully started time registration: ${registration.id}")
+                Log.d(TAG, "Tidsregistrering startet automatisk med ID: ${registration.id}")
             } catch (e: Exception) {
-                Log.e(TAG, "Error starting time registration", e)
-                notificationHelper.showNotification(
+                Log.e(TAG, "Fejl ved automatisk start af tidsregistrering", e)
+                notificationHelper.showArrivalNotification(
                     title = "Fejl ved tidsregistrering",
-                    message = "Kunne ikke starte tidsregistrering automatisk"
+                    message = "Der opstod en fejl ved automatisk start af tidsregistrering. Åbn appen for at registrere manuelt."
                 )
             }
         }
     }
-
+    
     private fun handleDeparture() {
-        Log.d(TAG, "Exited work location")
-        
-        // Opdater lokationsstatus
-        locationManager.updateWorkStatus(false)
-        
-        // Afslut tidsregistrering
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                repository.endCurrentTimeRegistration()
+                // Find aktiv tidsregistrering og afslut den
+                val currentRegistration = timeRegistrationRepository.getCurrentRegistration().firstOrNull()
                 
-                // Send notifikation
-                val time = LocalDateTime.now().toLocalTime()
-                notificationHelper.showNotification(
-                    title = "Tidsregistrering afsluttet",
-                    message = "Du har forladt arbejdspladsen kl. $time"
-                )
-                
-                Log.d(TAG, "Successfully ended time registration")
+                if (currentRegistration != null) {
+                    timeRegistrationRepository.stopCurrentRegistration()
+                    
+                    // Vis notifikation
+                    notificationHelper.showDepartureNotification(
+                        title = "Tidsregistrering afsluttet",
+                        message = "Du har forladt arbejdspladsen. Tidsregistrering er afsluttet automatisk."
+                    )
+                    
+                    Log.d(TAG, "Tidsregistrering afsluttet automatisk for ID: ${currentRegistration.id}")
+                } else {
+                    Log.d(TAG, "Ingen aktiv tidsregistrering at afslutte")
+                }
             } catch (e: Exception) {
-                Log.e(TAG, "Error ending time registration", e)
-                notificationHelper.showNotification(
+                Log.e(TAG, "Fejl ved automatisk afslutning af tidsregistrering", e)
+                notificationHelper.showDepartureNotification(
                     title = "Fejl ved tidsregistrering",
-                    message = "Kunne ikke afslutte tidsregistrering automatisk"
+                    message = "Der opstod en fejl ved automatisk afslutning af tidsregistrering. Åbn appen for at afslutte manuelt."
                 )
             }
         }

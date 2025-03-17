@@ -1,7 +1,4 @@
 package com.example.timeregistrering.model
 
-data class Project(
-    val id: String,
-    val name: String,
-    val description: String
-)
+// Denne fil er tom, da Project-klassen nu er defineret i TimeRegistration.kt
+// for at undgå redeclaration-fejl

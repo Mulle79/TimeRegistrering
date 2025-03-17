@@ -1,69 +1,59 @@
 package com.example.timeregistrering.data.repository
 
 import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.timeregistrering.model.Project
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private val Context.dataStore by preferencesDataStore(name = "projects")
+// Definerer en DataStore extension property for Context
+private val Context.dataStore by preferencesDataStore(name = "project_preferences")
 
 @Singleton
 class ProjectRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val defaultProjectIdKey = stringPreferencesKey("default_project_id")
-
-    private val projects = listOf(
-        Project(
-            id = "default",
-            name = "Standard Projekt",
-            description = "Standard projekt for timeregistrering"
-        ),
-        Project(
-            id = "overtime",
-            name = "Overarbejde",
-            description = "Projekt for overarbejde"
-        ),
-        Project(
-            id = "vacation",
-            name = "Ferie",
-            description = "Ferie og fridage"
-        ),
-        Project(
-            id = "sick",
-            name = "Sygdom",
-            description = "Sygedage"
-        )
+    
+    // Eksempelprojekter - i en rigtig app ville disse komme fra en database eller API
+    private val projects: List<Project> = listOf(
+        Project(id = "1", name = "Projekt A", description = "Projekt A beskrivelse", color = "#FF5733"),
+        Project(id = "2", name = "Projekt B", description = "Projekt B beskrivelse", color = "#33FF57"),
+        Project(id = "3", name = "Projekt C", description = "Projekt C beskrivelse", color = "#3357FF")
     )
-
-    fun getProjects(): Flow<List<Project>> = kotlinx.coroutines.flow.flow {
+    
+    fun getProjects(): Flow<List<Project>> = flow<List<Project>> {
         emit(projects)
     }
-
+    
     suspend fun getDefaultProject(): Project? {
-        val defaultProjectId = context.dataStore.data
+        val defaultProjectId: String = context.dataStore.data
             .map { preferences ->
-                preferences[defaultProjectIdKey] ?: "default"
+                preferences[defaultProjectIdKey] ?: "1"
             }
-            .collect { id ->
-                return projects.find { it.id == id }
-            }
-        return projects.first()
+            .firstOrNull() ?: "1"
+            
+        return projects.find { it.id == defaultProjectId } ?: projects.first()
     }
-
+    
     suspend fun setDefaultProject(projectId: String) {
-        context.dataStore.edit { preferences ->
-            preferences[defaultProjectIdKey] = projectId
+        if (projects.any { it.id == projectId }) {
+            context.dataStore.edit { preferences ->
+                preferences[defaultProjectIdKey] = projectId
+            }
         }
     }
-
-    suspend fun getProjectById(projectId: String): Project? {
-        return projects.find { it.id == projectId }
+    
+    fun getProjectById(id: String): Project? {
+        return projects.find { it.id == id }
     }
 }

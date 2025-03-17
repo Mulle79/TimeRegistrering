@@ -185,6 +185,76 @@ Bruger Hilt til dependency injection med følgende moduler:
 - Repository tests med test doubles
 - UI tests med Compose testing
 
+## Projekt Arkitektur
+
+### Overordnet Struktur
+
+```mermaid
+graph TD
+    A[Timeregistrering App] --> B[UI Layer]
+    A --> C[Domain Layer]
+    A --> D[Data Layer]
+    A --> E[Common Layer]
+
+    B --> B1[Compose UI Komponenter]
+    B --> B2[Screens]
+    B --> B3[Navigation]
+
+    C --> C1[Models]
+    C --> C2[Use Cases]
+    C --> C3[Repositories Interfaces]
+
+    D --> D1[Local Database - Room]
+    D --> D2[Network Clients]
+    D --> D3[Repositories Implementation]
+
+    E --> E1[Utility Klasser]
+    E --> E2[Security Managers]
+    E --> E3[Excel Håndtering]
+
+    subgraph Dependency Injection
+        F[Hilt Modules]
+    end
+
+    subgraph Testing
+        G[Unit Tests]
+        H[Integration Tests]
+        I[UI Tests]
+    end
+
+    A --> F
+    A --> G
+    A --> H
+    A --> I
+```
+
+### Lag Beskrivelse
+
+#### UI Layer
+- Ansvarlig for visning og brugerinteraktion
+- Benytter Jetpack Compose
+- Implementerer MVVM arkitektur
+
+#### Domain Layer
+- Indeholder forretningslogik
+- Definerer interfaces og modeller
+- Uafhængig af implementationsdetaljer
+
+#### Data Layer
+- Håndterer dataadgang
+- Implementerer repository pattern
+- Abstrahere data sources (lokalt/netværk)
+
+#### Common Layer
+- Indeholder delte funktionaliteter
+- Utility klasser og hjælpefunktioner
+- Sikkerhedshåndtering
+
+### Afhængigheder
+- Dependency Injection via Hilt
+- Asynkron programmering med Kotlin Coroutines
+- Reaktiv programmering med Kotlin Flow
+
 ## Sikkerhed og Performance
 
 ### Sikkerhed
@@ -721,3 +791,45 @@ Følgende secrets skal konfigureres i GitHub repository:
 
 # Byg release APK
 ./gradlew assembleRelease
+
+```
+
+## GitHub Actions Workflow
+
+Dette projekt bruger GitHub Actions til automatisk at bygge og udgive APK-filer.
+
+### Automatisk APK Bygning
+
+Hver gang der pushes til `main` eller `master` branch, eller når der oprettes en pull request mod disse branches, vil GitHub Actions automatisk bygge en debug APK.
+
+### Release Process
+
+For at udgive en ny version af appen:
+
+1. Opdater versionsnummeret i `buildSrc/src/main/kotlin/Versioning.kt`
+2. Opdater CHANGELOG.md med de seneste ændringer
+3. Commit og push ændringerne
+4. Opret et nyt tag med versionsnummeret: `git tag v1.1.0`
+5. Push tagget: `git push origin v1.1.0`
+
+GitHub Actions vil automatisk:
+- Bygge en release APK
+- Oprette en GitHub Release med det angivne tag
+- Vedhæfte APK-filen til releasen
+
+### Signing Configuration
+
+For at konfigurere app signing til release builds:
+
+1. Kopier `keystore.properties.template` til `keystore.properties`
+2. Udfyld værdierne i `keystore.properties` med dine keystore detaljer
+3. Sørg for at `keystore.properties` er tilføjet til `.gitignore` for at undgå at commit følsomme oplysninger
+
+```properties
+storePassword=your_keystore_password
+keyPassword=your_key_password
+keyAlias=your_key_alias
+storeFile=path/to/your/keystore.jks
+```
+
+Bemærk: For GitHub Actions builds, kan du tilføje disse værdier som repository secrets.

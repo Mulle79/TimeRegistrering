@@ -1,4 +1,6 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.util.Properties
+import java.io.FileInputStream
 
 @Suppress("DSL_SCOPE_VIOLATION")
 plugins {
@@ -6,8 +8,16 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
-    id("org.jetbrains.dokka") version Versions.dokka
+    // Dokka-plugin fjernet for at løse byggeproblemer
     id("jacoco")
+}
+
+// Signing configuration
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val useSigningConfig = keystorePropertiesFile.exists()
+val keystoreProperties = Properties()
+if (useSigningConfig) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -35,6 +45,18 @@ android {
         )
     }
 
+    // Signing configuration
+    if (useSigningConfig) {
+        signingConfigs {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -44,6 +66,9 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (useSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         debug {
             enableAndroidTestCoverage = true
@@ -62,12 +87,73 @@ android {
     }
     
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
+        kotlinCompilerExtensionVersion = "1.5.8"
     }
 
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+jacoco {
+    toolVersion = "0.8.10"
+}
+
+tasks.withType<Test> {
+    configure<JacocoTaskExtension> {
+        isEnabled = true
+        isIncludeNoLocationClasses = true
+        excludes = listOf("jdk.internal.*")
+    }
+}
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    group = "Reporting"
+    description = "Generate Jacoco coverage reports"
+    
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+
+    classDirectories.setFrom(
+        files(classDirectories.files.map {
+            fileTree(it) {
+                exclude(
+                    "**/R.class",
+                    "**/R$*.class",
+                    "**/BuildConfig.class",
+                    "**/Manifest*.*",
+                    "android/**/*.*",
+                    "**/*_Impl*.*",
+                    "**/*Module*.*",
+                    "**/*Dagger*.*",
+                    "**/*Hilt*.*"
+                )
+            }
+        })
+    )
+}
+
+tasks.withType<JacocoCoverageVerification> {
+    violationRules {
+        rule {
+            limit {
+                minimum = BigDecimal("0.7") // 70% coverage requirement
+            }
+        }
+        rule {
+            enabled = false
+            element = "CLASS"
+            includes = listOf("com.example.timeregistrering.*")
+            limit {
+                counter = "LINE"
+                value = "TOTALCOUNT"
+                maximum = BigDecimal("0.3")
+            }
         }
     }
 }
@@ -78,6 +164,10 @@ dependencies {
     implementation(Libs.AndroidX.lifecycle)
     implementation(Libs.AndroidX.activity)
     implementation("androidx.navigation:navigation-compose:2.7.6")
+
+    // DataStore
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
+    implementation("androidx.datastore:datastore-preferences-core:1.0.0")
 
     // Compose
     implementation(Libs.AndroidX.Compose.ui)
@@ -108,6 +198,7 @@ dependencies {
     // Google
     implementation("com.google.android.gms:play-services-location:21.0.1")
     implementation("com.google.android.gms:play-services-maps:18.2.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
     // Security
     implementation("androidx.security:security-crypto:1.1.0-alpha06")

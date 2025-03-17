@@ -2,22 +2,25 @@ package com.example.timeregistrering.data.repository
 
 import android.content.Context
 import android.util.Log
-import androidx.paging.Pager
-import androidx.paging.PagingConfig
-import androidx.paging.PagingData
-import androidx.room.*
 import com.example.timeregistrering.data.database.TimeregistreringDatabase
-import com.example.timeregistrering.data.database.dao.*
-import com.example.timeregistrering.data.database.entity.*
+import com.example.timeregistrering.data.database.dao.TimeRegistrationDao
+import com.example.timeregistrering.data.database.dao.PendingSyncDao
+import com.example.timeregistrering.data.database.dao.WorkPeriodDao
+import com.example.timeregistrering.data.database.dao.BreakDao
+import com.example.timeregistrering.data.database.entity.TimeRegistrationEntity
+import com.example.timeregistrering.data.database.entity.PendingSyncEntity
+import com.example.timeregistrering.data.database.entity.WorkPeriodEntity
+import com.example.timeregistrering.data.database.entity.BreakEntity
 import com.example.timeregistrering.model.*
+import com.example.timeregistrering.repository.AuthRepository
 import com.example.timeregistrering.util.HolidayManager
 import com.example.timeregistrering.util.NetworkManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
+import java.time.ZoneOffset
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -38,30 +41,44 @@ class TimeRegistrationRepository @Inject constructor(
     private val breakDao = database.breakDao()
     private val projectDao = database.projectDao()
 
+    // Opret et CoroutineScope for repository
+    private val repositoryScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     // Holder styr på registreringer der venter på at blive synkroniseret
     private val _pendingSyncRegistrations = MutableStateFlow<List<TimeRegistration>>(emptyList())
     val pendingSyncRegistrations: StateFlow<List<TimeRegistration>> = _pendingSyncRegistrations.asStateFlow()
 
     init {
         // Observer netværksstatus og synkroniser når online
-        viewModelScope.launch {
+        repositoryScope.launch {
             networkManager.observeNetworkState()
                 .filter { it is NetworkManager.NetworkState.Available }
                 .collect {
                     syncPendingRegistrations()
                 }
         }
+
+        // Observer bruger login status
+        repositoryScope.launch {
+            authRepository.isSignedIn
+                .filter { it }
+                .collect {
+                    updatePendingSyncList()
+                }
+        }
     }
 
     suspend fun saveTimeRegistration(registration: TimeRegistration) {
         try {
+            val entity = registration.toEntity()
+            
             if (networkManager.isNetworkAvailable()) {
                 // Online - gem direkte
-                timeRegistrationDao.insert(registration.toEntity())
+                timeRegistrationDao.insert(entity)
             } else {
                 // Offline - gem lokalt og marker til synkronisering
-                timeRegistrationDao.insert(registration.toEntity())
-                pendingSyncDao.insert(registration)
+                timeRegistrationDao.insert(entity)
+                pendingSyncDao.insertPendingSync(PendingSyncEntity(registrationId = registration.id))
                 updatePendingSyncList()
             }
         } catch (e: Exception) {
@@ -70,33 +87,50 @@ class TimeRegistrationRepository @Inject constructor(
         }
     }
 
-    fun getTimeRegistrationsForWeek(weekStartDate: LocalDate): Flow<List<TimeRegistration>> {
-        val userId = authRepository.getCurrentUserId() ?: throw IllegalStateException("Ingen bruger logget ind")
+    suspend fun getTimeRegistrationsForWeek(weekStartDate: LocalDate): List<TimeRegistration> {
+        val userId = authRepository.getCurrentUser()?.id ?: throw IllegalStateException("Ingen bruger logget ind")
         val weekEndDate = weekStartDate.plusDays(6)
-        return timeRegistrationDao.getRegistrationsForDateRange(
+        
+        // Konverter til LocalDateTime for at matche DAO metoden
+        val startDateTime = weekStartDate.atStartOfDay()
+        val endDateTime = weekEndDate.plusDays(1).atStartOfDay()
+        
+        val registrations = timeRegistrationDao.getRegistrationsForDateRange(
             userId = userId,
-            startDate = weekStartDate.atStartOfDay(),
-            endDate = weekEndDate.plusDays(1).atStartOfDay()
-        ).map { entities -> entities.map { it.toDomain() } }
+            startDate = startDateTime,
+            endDate = endDateTime
+        )
+        
+        return registrations.map { entity -> entity.toDomain() }
     }
 
-    fun getTimeRegistrationsForMonth(year: Int, month: Int): Flow<List<TimeRegistration>> {
-        val userId = authRepository.getCurrentUserId() ?: throw IllegalStateException("Ingen bruger logget ind")
+    suspend fun getTimeRegistrationsForMonth(year: Int, month: Int): List<TimeRegistration> {
+        val userId = authRepository.getCurrentUser()?.id ?: throw IllegalStateException("Ingen bruger logget ind")
         val startDate = LocalDate.of(year, month, 1)
         val endDate = startDate.plusMonths(1).minusDays(1)
-        return timeRegistrationDao.getRegistrationsForDateRange(
+        
+        // Konverter til LocalDateTime for at matche DAO metoden
+        val startDateTime = startDate.atStartOfDay()
+        val endDateTime = endDate.plusDays(1).atStartOfDay()
+        
+        val registrations = timeRegistrationDao.getRegistrationsForDateRange(
             userId = userId,
-            startDate = startDate.atStartOfDay(),
-            endDate = endDate.plusDays(1).atStartOfDay()
-        ).map { entities -> entities.map { it.toDomain() } }
+            startDate = startDateTime,
+            endDate = endDateTime
+        )
+        
+        return registrations.map { it.toDomain() }
     }
 
     suspend fun startTimeRegistration(projectId: String, description: String = "", location: Location? = null): TimeRegistration {
-        val userId = authRepository.getCurrentUserId() ?: throw IllegalStateException("Ingen bruger logget ind")
+        val userId = authRepository.getCurrentUser()?.id ?: throw IllegalStateException("Ingen bruger logget ind")
+        
+        val now = LocalDateTime.now()
         
         val registration = TimeRegistration(
             id = UUID.randomUUID().toString(),
-            startTime = LocalDateTime.now(),
+            startTime = now,
+            endTime = null,
             description = description,
             location = location,
             projectId = projectId,
@@ -104,13 +138,15 @@ class TimeRegistrationRepository @Inject constructor(
         )
 
         try {
+            val entity = registration.toEntity()
+            
             if (networkManager.isNetworkAvailable()) {
                 // Online - gem direkte
-                timeRegistrationDao.insert(registration.toEntity())
+                timeRegistrationDao.insert(entity)
             } else {
                 // Offline - gem lokalt og marker til synkronisering
-                timeRegistrationDao.insert(registration.toEntity())
-                pendingSyncDao.insert(registration)
+                timeRegistrationDao.insert(entity)
+                pendingSyncDao.insertPendingSync(PendingSyncEntity(registrationId = registration.id))
                 updatePendingSyncList()
             }
         } catch (e: Exception) {
@@ -121,9 +157,11 @@ class TimeRegistrationRepository @Inject constructor(
         // Start første arbejdsperiode
         val workPeriod = WorkPeriod(
             id = UUID.randomUUID().toString(),
-            startTime = registration.startTime
+            startTime = registration.startTime,
+            endTime = null
         )
-        workPeriodDao.insert(workPeriod.toEntity(registration.id))
+        
+        workPeriodDao.insert(workPeriodToEntity(workPeriod, registration.id))
 
         return registration
     }
@@ -134,20 +172,25 @@ class TimeRegistrationRepository @Inject constructor(
         
         val currentWorkPeriod = workPeriodDao.getCurrentWorkPeriod()
         if (currentWorkPeriod != null) {
-            workPeriodDao.update(currentWorkPeriod.copy(
-                endTime = LocalDateTime.now(),
+            val now = LocalDateTime.now()
+            val updatedWorkPeriod = currentWorkPeriod.copy(
+                endTime = now,
                 totalWorkTime = calculateWorkTime(currentWorkPeriod)
-            ))
+            )
+            workPeriodDao.update(updatedWorkPeriod)
         }
 
         try {
+            val now = LocalDateTime.now()
+            val updatedRegistration = registration.copy(endTime = now)
+            
             if (networkManager.isNetworkAvailable()) {
                 // Online - opdater direkte
-                timeRegistrationDao.update(registration.copy(endTime = LocalDateTime.now()))
+                timeRegistrationDao.update(updatedRegistration)
             } else {
                 // Offline - gem lokalt og marker til synkronisering
-                timeRegistrationDao.update(registration.copy(endTime = LocalDateTime.now()))
-                pendingSyncDao.insert(registration)
+                timeRegistrationDao.update(updatedRegistration)
+                pendingSyncDao.insertPendingSync(PendingSyncEntity(registrationId = registration.id))
                 updatePendingSyncList()
             }
         } catch (e: Exception) {
@@ -157,18 +200,32 @@ class TimeRegistrationRepository @Inject constructor(
     }
 
     suspend fun startBreak(workPeriodId: String) {
-        val break = Break(
+        val breakObj = Break(
             id = UUID.randomUUID().toString(),
-            startTime = LocalDateTime.now()
+            startTime = LocalDateTime.now(),
+            endTime = null
         )
-        breakDao.insert(break.toEntity(workPeriodId))
+        
+        val breakEntity = breakToEntity(breakObj, workPeriodId)
+        val breakEntityToInsert = breakEntity
+        breakDao.insert(breakEntityToInsert)
     }
 
     suspend fun endBreak(workPeriodId: String) {
         val currentBreak = breakDao.getCurrentBreak(workPeriodId)
             ?: throw IllegalStateException("Ingen aktiv pause fundet")
         
-        breakDao.update(currentBreak.copy(endTime = LocalDateTime.now()))
+        val now = LocalDateTime.now()
+        val duration = now.toEpochSecond(ZoneOffset.UTC) - 
+                      currentBreak.startTime.toEpochSecond(ZoneOffset.UTC)
+        
+        val updatedBreak = currentBreak.copy(
+            endTime = now,
+            duration = duration
+        )
+        
+        val breakEntityToUpdate = updatedBreak
+        breakDao.update(breakEntityToUpdate)
     }
 
     suspend fun deleteTimeRegistration(registration: TimeRegistration) {
@@ -176,19 +233,29 @@ class TimeRegistrationRepository @Inject constructor(
     }
 
     private suspend fun updatePendingSyncList() {
-        _pendingSyncRegistrations.value = pendingSyncDao.getAll()
+        val pendingSyncs = pendingSyncDao.getAllPendingSyncsSync()
+        val registrations = mutableListOf<TimeRegistration>()
+        
+        for (pendingSync in pendingSyncs) {
+            val registration = timeRegistrationDao.getById(pendingSync.registrationId)
+            if (registration != null) {
+                registrations.add(registration.toDomain())
+            }
+        }
+        
+        _pendingSyncRegistrations.value = registrations
     }
 
     private suspend fun syncPendingRegistrations() {
         try {
-            val pending = pendingSyncDao.getAll()
-            pending.forEach { registration ->
+            val pendingSyncs = pendingSyncDao.getAllPendingSyncsSync()
+            for (pendingSync in pendingSyncs) {
                 try {
                     // Her ville vi normalt synkronisere med en server
                     // For nu markerer vi bare som synkroniseret
-                    pendingSyncDao.delete(registration)
+                    pendingSyncDao.delete(pendingSync)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Fejl ved synkronisering af registrering: ${registration.id}", e)
+                    Log.e(TAG, "Fejl ved synkronisering af registrering: ${pendingSync.registrationId}", e)
                 }
             }
             updatePendingSyncList()
@@ -200,101 +267,85 @@ class TimeRegistrationRepository @Inject constructor(
     private fun calculateWorkTime(workPeriod: WorkPeriodEntity): Long {
         val start = workPeriod.startTime
         val end = workPeriod.endTime ?: LocalDateTime.now()
-        return end.toEpochSecond(java.time.ZoneOffset.UTC) - 
-               start.toEpochSecond(java.time.ZoneOffset.UTC)
+        return end.toEpochSecond(ZoneOffset.UTC) - 
+               start.toEpochSecond(ZoneOffset.UTC)
     }
 
-    private fun TimeRegistrationEntity.toDomain() = TimeRegistration(
-        id = id,
-        startTime = startTime,
-        endTime = endTime,
-        description = description,
-        location = if (latitude != null && longitude != null) {
-            Location(latitude, longitude, address)
-        } else null,
-        projectId = projectId,
-        userId = userId,
-        isHoliday = holidayManager.isHoliday(startTime.toLocalDate())
-    )
-
-    private fun TimeRegistration.toEntity() = TimeRegistrationEntity(
-        id = id,
-        startTime = startTime,
-        endTime = endTime,
-        description = description,
-        latitude = location?.latitude,
-        longitude = location?.longitude,
-        address = location?.address,
-        projectId = projectId,
-        userId = userId
-    )
-
-    private fun WorkPeriod.toEntity(registrationId: String) = WorkPeriodEntity(
-        id = id,
-        timeRegistrationId = registrationId,
-        startTime = startTime,
-        endTime = endTime,
-        totalWorkTime = if (endTime != null) {
-            endTime.toEpochSecond(java.time.ZoneOffset.UTC) - 
-            startTime.toEpochSecond(java.time.ZoneOffset.UTC)
-        } else 0
-    )
-
-    private fun Break.toEntity(workPeriodId: String) = BreakEntity(
-        id = id,
-        workPeriodId = workPeriodId,
-        startTime = startTime,
-        endTime = endTime
-    )
-
-    fun getTimeRegistrationsPaged(
-        pageSize: Int = 20,
-        prefetchDistance: Int = pageSize,
-        enablePlaceholders: Boolean = true
-    ): Flow<PagingData<TimeRegistration>> {
-        return Pager(
-            config = PagingConfig(
-                pageSize = pageSize,
-                prefetchDistance = prefetchDistance,
-                enablePlaceholders = enablePlaceholders
-            )
-        ) {
-            timeRegistrationDao.getAllTimeRegistrationsPaged()
-        }.flow
+    // Konverteringsmetoder mellem entiteter og domænemodeller
+    private fun TimeRegistrationEntity.toDomain(): TimeRegistration {
+        return TimeRegistration(
+            id = id,
+            startTime = startTime,
+            endTime = endTime,
+            description = description,
+            location = if (latitude != null && longitude != null) {
+                Location(latitude, longitude, address)
+            } else null,
+            projectId = projectId,
+            userId = userId
+        )
     }
 
-    fun getTimeRegistrationsByProjectPaged(
-        projectId: Long,
-        pageSize: Int = 20,
-        prefetchDistance: Int = pageSize,
-        enablePlaceholders: Boolean = true
-    ): Flow<PagingData<TimeRegistration>> {
-        return Pager(
-            config = PagingConfig(
-                pageSize = pageSize,
-                prefetchDistance = prefetchDistance,
-                enablePlaceholders = enablePlaceholders
-            )
-        ) {
-            timeRegistrationDao.getTimeRegistrationsByProjectPaged(projectId)
-        }.flow
+    private fun TimeRegistration.toEntity(): TimeRegistrationEntity {
+        return TimeRegistrationEntity(
+            id = id,
+            startTime = startTime,
+            endTime = endTime,
+            description = description,
+            latitude = location?.latitude,
+            longitude = location?.longitude,
+            address = location?.address,
+            projectId = projectId,
+            userId = userId
+        )
     }
 
-    fun getTimeRegistrationsByDateRangePaged(
-        startDate: LocalDateTime,
-        endDate: LocalDateTime,
-        pageSize: Int = 20,
-        prefetchDistance: Int = pageSize,
-        enablePlaceholders: Boolean = true
-    ): Flow<PagingData<TimeRegistration>> {
-        return Pager(
-            config = PagingConfig(
-                pageSize = pageSize,
-                prefetchDistance = prefetchDistance,
-                enablePlaceholders = enablePlaceholders
-            )
-        ) {
-            timeRegistrationDao.getTimeRegistrationsByDateRangePaged(startDate, endDate)
-        }.flow
+    private fun workPeriodToEntity(workPeriod: WorkPeriod, registrationId: String): WorkPeriodEntity {
+        val totalTime = if (workPeriod.endTime != null) {
+            workPeriod.endTime.toEpochSecond(ZoneOffset.UTC) - 
+            workPeriod.startTime.toEpochSecond(ZoneOffset.UTC)
+        } else 0L
+        
+        return WorkPeriodEntity(
+            id = workPeriod.id,
+            timeRegistrationId = registrationId,
+            startTime = workPeriod.startTime,
+            endTime = workPeriod.endTime,
+            totalWorkTime = totalTime
+        )
+    }
+
+    private fun breakToEntity(breakObj: Break, workPeriodId: String): BreakEntity {
+        val breakDuration = if (breakObj.endTime != null) {
+            breakObj.endTime.toEpochSecond(ZoneOffset.UTC) - 
+            breakObj.startTime.toEpochSecond(ZoneOffset.UTC)
+        } else 0L
+        
+        return BreakEntity(
+            id = breakObj.id,
+            workPeriodId = workPeriodId,
+            startTime = breakObj.startTime,
+            endTime = breakObj.endTime,
+            duration = breakDuration
+        )
+    }
+
+    /**
+     * Henter den aktuelle igangværende tidsregistrering, hvis der er en.
+     * Bruges af GeofenceBroadcastReceiver til at afslutte tidsregistrering ved afgang fra arbejdspladsen.
+     */
+    suspend fun getCurrentRegistration(): TimeRegistration? {
+        val userId = authRepository.getCurrentUser()?.id ?: return null
+        return timeRegistrationDao.getCurrentRegistration(userId)?.toDomain()
+    }
+
+    /**
+     * Stopper den aktuelle igangværende tidsregistrering.
+     * Bruges af GeofenceBroadcastReceiver til at afslutte tidsregistrering ved afgang fra arbejdspladsen.
+     */
+    suspend fun stopCurrentRegistration() {
+        val userId = authRepository.getCurrentUser()?.id ?: return
+        val currentRegistration = timeRegistrationDao.getCurrentRegistration(userId) ?: return
+        endTimeRegistration(currentRegistration.id)
     }
 }

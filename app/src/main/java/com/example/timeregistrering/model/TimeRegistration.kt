@@ -34,6 +34,7 @@ data class WorkPeriod(
 )
 
 data class Break(
+    val id: String,
     val startTime: LocalDateTime,
     val endTime: LocalDateTime? = null,
     val duration: Long = 0 // i minutter

@@ -1,31 +1,34 @@
 package com.example.timeregistrering.location
 
 import android.Manifest
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.location.Location
 import android.util.Log
 import androidx.core.app.ActivityCompat
+import com.example.timeregistrering.model.WorkLocation
 import com.google.android.gms.location.*
+import com.google.android.gms.maps.model.LatLng
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 @Singleton
 class LocationManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val sharedPreferences: SharedPreferences
+    private val sharedPreferences: SharedPreferences,
+    private val geofencingService: GeofencingService
 ) {
-    private val geofencingClient = LocationServices.getGeofencingClient(context)
     private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
     
-    private val _workLocation = MutableStateFlow<Location?>(null)
+    private val _workLocation = MutableStateFlow<WorkLocation?>(null)
     val workLocation = _workLocation.asStateFlow()
     
     private val _isAtWork = MutableStateFlow(false)
@@ -33,10 +36,11 @@ class LocationManager @Inject constructor(
     
     companion object {
         private const val TAG = "LocationManager"
-        private const val GEOFENCE_RADIUS_METERS = 100f
-        private const val GEOFENCE_ID = "work_location"
         private const val PREFS_WORK_LAT = "work_latitude"
         private const val PREFS_WORK_LNG = "work_longitude"
+        private const val PREFS_WORK_NAME = "work_name"
+        private const val PREFS_WORK_ADDRESS = "work_address"
+        private const val PREFS_WORK_RADIUS = "work_radius"
     }
     
     init {
@@ -47,31 +51,37 @@ class LocationManager @Inject constructor(
         val lat = sharedPreferences.getFloat(PREFS_WORK_LAT, 0f)
         val lng = sharedPreferences.getFloat(PREFS_WORK_LNG, 0f)
         if (lat != 0f && lng != 0f) {
-            val location = Location("").apply {
-                latitude = lat.toDouble()
-                longitude = lng.toDouble()
-            }
-            _workLocation.value = location
-            setupGeofencing(location)
+            val name = sharedPreferences.getString(PREFS_WORK_NAME, "") ?: ""
+            val address = sharedPreferences.getString(PREFS_WORK_ADDRESS, "") ?: ""
+            val radius = sharedPreferences.getFloat(PREFS_WORK_RADIUS, 100f)
+            
+            val workLocation = WorkLocation(
+                latitude = lat.toDouble(),
+                longitude = lng.toDouble(),
+                name = name,
+                address = address,
+                radiusInMeters = radius
+            )
+            
+            _workLocation.value = workLocation
+            setupGeofencing(workLocation)
         }
     }
     
-    fun setWorkLocation(latitude: Double, longitude: Double) {
-        val location = Location("").apply {
-            this.latitude = latitude
-            this.longitude = longitude
-        }
-        
+    suspend fun setWorkLocation(workLocation: WorkLocation) {
         sharedPreferences.edit()
-            .putFloat(PREFS_WORK_LAT, latitude.toFloat())
-            .putFloat(PREFS_WORK_LNG, longitude.toFloat())
+            .putFloat(PREFS_WORK_LAT, workLocation.latitude.toFloat())
+            .putFloat(PREFS_WORK_LNG, workLocation.longitude.toFloat())
+            .putString(PREFS_WORK_NAME, workLocation.name)
+            .putString(PREFS_WORK_ADDRESS, workLocation.address)
+            .putFloat(PREFS_WORK_RADIUS, workLocation.radiusInMeters)
             .apply()
         
-        _workLocation.value = location
-        setupGeofencing(location)
+        _workLocation.value = workLocation
+        setupGeofencing(workLocation)
     }
     
-    private fun setupGeofencing(location: Location) {
+    private fun setupGeofencing(workLocation: WorkLocation) {
         if (ActivityCompat.checkSelfPermission(
                 context,
                 Manifest.permission.ACCESS_FINE_LOCATION
@@ -81,41 +91,15 @@ class LocationManager @Inject constructor(
             return
         }
         
-        val geofence = Geofence.Builder()
-            .setRequestId(GEOFENCE_ID)
-            .setCircularRegion(
-                location.latitude,
-                location.longitude,
-                GEOFENCE_RADIUS_METERS
+        try {
+            // Brug GeofencingService til at håndtere geofences
+            geofencingService.addWorkplaceGeofence(
+                latitude = workLocation.latitude,
+                longitude = workLocation.longitude,
+                radiusInMeters = workLocation.radiusInMeters
             )
-            .setExpirationDuration(Geofence.NEVER_EXPIRE)
-            .setTransitionTypes(
-                Geofence.GEOFENCE_TRANSITION_ENTER or
-                Geofence.GEOFENCE_TRANSITION_EXIT
-            )
-            .build()
-        
-        val request = GeofencingRequest.Builder()
-            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
-            .addGeofence(geofence)
-            .build()
-        
-        val intent = Intent(context, GeofenceBroadcastReceiver::class.java)
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            0,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-        )
-        
-        geofencingClient.removeGeofences(pendingIntent).addOnCompleteListener {
-            geofencingClient.addGeofences(request, pendingIntent)
-                .addOnSuccessListener {
-                    Log.d(TAG, "Geofence oprettet for arbejdsplads")
-                }
-                .addOnFailureListener { e ->
-                    Log.e(TAG, "Fejl ved oprettelse af geofence", e)
-                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Fejl ved oprettelse af geofence", e)
         }
     }
     
@@ -123,19 +107,46 @@ class LocationManager @Inject constructor(
         _isAtWork.value = isAtWork
     }
     
-    fun getCurrentLocation(onLocation: (Location) -> Unit) {
+    suspend fun getCurrentLocation(): LatLng = suspendCancellableCoroutine { continuation ->
         if (ActivityCompat.checkSelfPermission(
                 context,
                 Manifest.permission.ACCESS_FINE_LOCATION
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            Log.e(TAG, "Mangler tilladelse til præcis lokation")
-            return
+            continuation.resumeWithException(SecurityException("Mangler tilladelse til præcis lokation"))
+            return@suspendCancellableCoroutine
         }
         
         fusedLocationClient.lastLocation
             .addOnSuccessListener { location ->
-                location?.let(onLocation)
+                location?.let {
+                    continuation.resume(LatLng(it.latitude, it.longitude))
+                } ?: continuation.resumeWithException(Exception("Kunne ikke hente lokation"))
             }
+            .addOnFailureListener { e ->
+                continuation.resumeWithException(e)
+            }
+    }
+    
+    suspend fun isAtWorkLocation(): Boolean {
+        val workLoc = _workLocation.value ?: return false
+        
+        try {
+            val currentLocation = getCurrentLocation()
+            
+            val results = FloatArray(1)
+            android.location.Location.distanceBetween(
+                currentLocation.latitude,
+                currentLocation.longitude,
+                workLoc.latitude,
+                workLoc.longitude,
+                results
+            )
+            
+            return results[0] <= workLoc.radiusInMeters
+        } catch (e: Exception) {
+            Log.e(TAG, "Fejl ved kontrol af arbejdsplads lokation", e)
+            return false
+        }
     }
 }

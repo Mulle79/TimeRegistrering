@@ -1,7 +1,7 @@
 object Versions {
-    const val kotlin = "1.9.0"
-    const val androidGradlePlugin = "8.2.0"
-    const val ksp = "1.9.0-1.0.13"
+    const val kotlin = "1.9.22"
+    const val androidGradlePlugin = "8.3.0"
+    const val ksp = "1.9.22-1.0.16"
     const val hilt = "2.48"
     const val compose = "1.6.1"
     const val composeMaterial3 = "1.2.0"

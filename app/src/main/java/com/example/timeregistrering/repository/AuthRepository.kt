@@ -3,6 +3,7 @@ package com.example.timeregistrering.repository
 import android.content.Context
 import android.content.Intent
 import com.example.timeregistrering.common.security.SecurityManager
+import com.example.timeregistrering.model.User
 import com.example.timeregistrering.util.Constants
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
@@ -84,6 +85,17 @@ class AuthRepository @Inject constructor(
 
     fun createGoogleCredential(accessToken: String): GoogleCredential {
         return GoogleCredential().setAccessToken(accessToken)
+    }
+
+    // Henter den aktuelle bruger
+    suspend fun getCurrentUser(): User? {
+        val account = GoogleSignIn.getLastSignedInAccount(context) ?: return null
+        return User(
+            id = account.id ?: return null,
+            name = account.displayName ?: "",
+            email = account.email ?: "",
+            photoUrl = account.photoUrl?.toString()
+        )
     }
 
     private suspend fun exchangeAuthCodeForTokens(authCode: String): TokenResponse {

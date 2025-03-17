@@ -6,20 +6,25 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
+import com.example.timeregistrering.receiver.GeofenceBroadcastReceiver
+import com.example.timeregistrering.util.PowerManager
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingClient
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class GeofencingService @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val powerManager: PowerManager
+    private val powerManager: com.example.timeregistrering.util.PowerManager
 ) {
     private val geofencingClient: GeofencingClient = LocationServices.getGeofencingClient(context)
     private val geofencePendingIntent: PendingIntent by lazy {
@@ -181,12 +186,7 @@ class RetryPolicy(
     }
 }
 
-sealed class GeofencingException : Exception {
+open class GeofencingException : Exception {
     constructor(message: String) : super(message)
     constructor(message: String, cause: Throwable) : super(message, cause)
-    
-    class PermissionDenied : GeofencingException("Manglende tilladelser")
-    class LocationDisabled : GeofencingException("Lokationstjenester er deaktiveret")
-    class GeofenceNotAvailable : GeofencingException("Geofencing er ikke tilgængelig")
-    class TooManyGeofences : GeofencingException("For mange aktive geofences")
 }
