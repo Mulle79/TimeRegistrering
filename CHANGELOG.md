@@ -5,7 +5,7 @@ Alle væsentlige ændringer i projektet vil blive dokumenteret i denne fil.
 Formatet er baseret på [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 og projektet følger [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2025-03-18
 
 ### Tilføjet
 
@@ -17,6 +17,25 @@ og projektet følger [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Opdateret README.md med instruktioner til GitHub Actions workflow
 - Forbedret build.gradle.kts med betinget signing configuration
+
+## [Unreleased]
+
+### Tilføjet
+
+- NotificationHelper til at vise notifikationer ved ankomst og afgang fra arbejdspladsen
+- Forbedret geofencing-funktionalitet med automatisk tidsregistrering
+- Integreret PowerManager til at håndtere batterioptimeringsindstillinger
+
+### Ændret
+
+- Opdateret AndroidManifest.xml for at fjerne ikke-eksisterende services
+- Forbedret LocationModule med NotificationHelper-support
+- Optimeret GeofenceBroadcastReceiver til at bruge separate notifikationer for ankomst og afgang
+
+### Rettet
+
+- Ikon-referencer i notifikationer
+- Dependency injection for lokationsbaserede tjenester
 
 ## [1.1.0] - 2025-03-13
 

@@ -27,14 +27,14 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build with Gradle
-        run: ./gradlew assembleRelease
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v3
         with:
-          name: app-release
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
 
   release:
     name: Release APK
@@ -43,17 +43,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download APK from build
-        uses: actions/download-artifact@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
         with:
-          name: app-release
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
 
       - name: Get version from tag
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Build Debug APK for Release
+        run: ./gradlew assembleDebug
+
       - name: Rename APK
-        run: mv app-release-unsigned.apk timeregistrering-${{ steps.get_version.outputs.VERSION }}.apk
+        run: mv app/build/outputs/apk/debug/app-debug.apk timeregistrering-${{ steps.get_version.outputs.VERSION }}.apk
 
       - name: Create Release
         id: create_release
